@@ -3,12 +3,11 @@ import { useEffect, useRef, useState } from 'react';
 export const useRhythmEngine = (bpm: number) => {
     const audioContext = useRef<AudioContext | null>(null);
     const nextNoteTime = useRef(0);
-    const [isPlaying, setIsPlaying] = useState(false);
     const [currentBeat, setCurrentBeat] = useState(0);
     const [lastBeatTime, setLastBeatTime] = useState(0);
 
     const playClick = (frequency: number) => {
-        if (!audioContext.current || audioContext.current.state === 'suspended') return;
+        if (!audioContext.current) return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -61,8 +60,6 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     useEffect(() => {
-        if (!isPlaying) return;
-
         const scheduler = () => {
             if (!audioContext.current) return;
 
@@ -70,38 +67,26 @@ export const useRhythmEngine = (bpm: number) => {
                 const time = nextNoteTime.current;
                 const beatNum = currentBeat % 2;
 
+                // Play beat 1 (High) and beat 2 (Low)
                 playClick(beatNum === 0 ? 880 : 440);
 
                 setLastBeatTime(time * 1000); // ms
                 setCurrentBeat(prev => prev + 1);
-                nextNoteTime.current += 60 / bpm / 2;
+                nextNoteTime.current += 60 / bpm / 2; // 2 beats per whole note cycle? User says "1回の間に2拍うち"
             }
         };
 
         const timer = setInterval(scheduler, 25);
         return () => clearInterval(timer);
-    }, [bpm, currentBeat, isPlaying]);
+    }, [bpm, currentBeat]);
 
     const startEngine = () => {
         if (!audioContext.current) {
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             audioContext.current = new AudioContextClass();
+            nextNoteTime.current = audioContext.current.currentTime;
         }
-        if (audioContext.current.state === 'suspended') {
-            audioContext.current.resume();
-        }
-        nextNoteTime.current = audioContext.current.currentTime;
-        setIsPlaying(true);
     };
 
-    const stopEngine = () => {
-        setIsPlaying(false);
-    };
-
-    const toggleEngine = () => {
-        if (isPlaying) stopEngine();
-        else startEngine();
-    };
-
-    return { currentBeat, lastBeatTime, isPlaying, startEngine, stopEngine, toggleEngine, playSlide, playRotation };
+    return { currentBeat, lastBeatTime, startEngine, playSlide, playRotation };
 };
