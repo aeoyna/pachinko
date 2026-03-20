@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { useGesture } from '@use-gesture/react';
-import { Zap, Heart, ChevronUp, ChevronDown, ChevronRight, Play } from 'lucide-react';
+import { Zap, Heart, ChevronUp, ChevronDown, ChevronRight, Play, Pause } from 'lucide-react';
 import { useRhythmEngine } from './hooks/useRhythmEngine';
 import './index.css';
 
@@ -73,7 +73,7 @@ export default function App() {
   const rotateX = useTransform(springY, [-300, 300], [20, -20]);
   const rotateY = useTransform(springX, [-300, 300], [-20, 20]);
 
-  const { lastBeatTime, startEngine, playSlide, playRotation } = useRhythmEngine(bpm);
+  const { lastBeatTime, isPlaying, startEngine, stopEngine, playSlide, playRotation } = useRhythmEngine(bpm);
 
   useEffect(() => {
     if (isRush && rushTime > 0) {
@@ -136,7 +136,7 @@ export default function App() {
 
   const bind = useGesture({
     onDrag: ({ offset: [ox, oy], active }) => {
-      if (!audioStarted) return;
+      if (!audioStarted || !isPlaying) return;
       if (active) {
         dragX.set(ox);
         dragY.set(oy);
@@ -146,7 +146,9 @@ export default function App() {
       if (!audioStarted) {
         startEngine();
         setAudioStarted(true);
+        return;
       }
+      if (!isPlaying) return;
 
       if (tap) {
         toggleFlip(wordIndex);
@@ -155,10 +157,11 @@ export default function App() {
         return;
       }
 
-      const vThreshold = 0.2;
-      const dThreshold = 100;
+      // Refined thresholds for better sensitivity
+      const vThreshold = 0.1; // Lowered from 0.2
+      const dThreshold = 50;  // Lowered from 100
 
-      if (vy > vThreshold && dy < -0.1 || oy < -dThreshold) { // NEXT
+      if ((vy > vThreshold && dy < -0.1) || oy < -dThreshold) { // NEXT
         playSlide();
         setDirection(1);
         const onBeat = validateRhythm();
@@ -171,12 +174,12 @@ export default function App() {
           setCombo(0);
           handleHesoLottery(false);
         }
-      } else if (vy > vThreshold && dy > 0.1 || oy > dThreshold) { // PREV
+      } else if ((vy > vThreshold && dy > 0.1) || oy > dThreshold) { // PREV
         playSlide();
         setDirection(-1);
         setWordIndex(prev => (prev - 1 + WORDS.length) % WORDS.length);
         setCombo(0);
-      } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // MEMORIZE
+      } else if ((vx > vThreshold && dx > 0.1) || ox > dThreshold) { // MEMORIZE
         playRotation();
         setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'right' }]);
       }
@@ -184,12 +187,12 @@ export default function App() {
       dragX.set(0);
       dragY.set(0);
     }
-  }, { drag: { from: () => [dragX.get(), dragY.get()] } });
+  }, { drag: { from: () => [dragX.get(), dragY.get()], threshold: 5 } }); // Added drag threshold
 
   return (
     <div className="app-container" style={{ userSelect: 'none', overflow: 'hidden' }}>
       <motion.div
-        animate={{ opacity: [0.05, 0.15, 0.05] }}
+        animate={{ opacity: isPlaying ? [0.05, 0.15, 0.05] : 0.05 }}
         transition={{ duration: 60 / bpm, repeat: Infinity }}
         style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)', pointerEvents: 'none' }}
       />
@@ -221,7 +224,7 @@ export default function App() {
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
           <motion.div
             animate={{
-              y: [0, -8, 0],
+              y: isPlaying ? [0, -8, 0] : 0,
               scale: isLotteryRunning ? [1, 1.1, 1] : 1
             }}
             transition={{ repeat: Infinity, duration: 1 }}
@@ -254,7 +257,7 @@ export default function App() {
 
       <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
         <motion.div
-          animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.3, 0.1] }}
+          animate={{ scale: isPlaying ? [1, 1.1, 1] : 1, opacity: isPlaying ? [0.1, 0.3, 0.1] : 0.1 }}
           transition={{ duration: 60 / bpm / 2, repeat: Infinity }}
           style={{ position: 'absolute', width: '350px', height: '350px', border: '2px solid var(--accent-glow)', borderRadius: '50%', pointerEvents: 'none' }}
         />
@@ -272,17 +275,17 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 10, position: 'relative' }}>
+        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: isPlaying ? 'grab' : 'default', zIndex: 10, position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={wordIndex}
               custom={direction}
               variants={{
                 enter: (d: number) => ({
-                  y: d > 0 ? 500 : -500,
+                  y: d > 0 ? 500 : (d < 0 ? -500 : 0),
                   opacity: 0,
                   scale: 0.8,
-                  rotateX: d > 0 ? -45 : 45
+                  rotateX: d > 0 ? -45 : (d < 0 ? 45 : 0)
                 }),
                 center: {
                   y: 0,
@@ -293,10 +296,10 @@ export default function App() {
                   zIndex: 10
                 },
                 exit: (d: number) => ({
-                  y: d > 0 ? -500 : 500,
+                  y: d > 0 ? -500 : (d < 0 ? 500 : 0),
                   opacity: 0,
                   scale: 0.8,
-                  rotateX: d > 0 ? 45 : -45,
+                  rotateX: d > 0 ? 45 : (d < 0 ? -45 : 0),
                   zIndex: 0
                 })
               }}
@@ -310,7 +313,7 @@ export default function App() {
               style={{
                 width: '100%', height: '100%', position: 'absolute',
                 transformStyle: 'preserve-3d',
-                pointerEvents: 'auto'
+                pointerEvents: isPlaying ? 'auto' : 'none'
               }}
             >
               <motion.div
@@ -323,13 +326,12 @@ export default function App() {
                   word={WORDS[wordIndex].word}
                   definition={WORDS[wordIndex].definition}
                   isFlipped={!!flipStates[wordIndex]}
-                  onFlip={() => toggleFlip(wordIndex)}
+                  onFlip={() => isPlaying && toggleFlip(wordIndex)}
                 />
               </motion.div>
             </motion.div>
           </AnimatePresence>
 
-          {/* Under-Card Mock */}
           <div style={{
             position: 'absolute', top: 10, bottom: -10, left: 10, right: 10,
             background: 'rgba(255,255,255,0.03)', borderRadius: '32px', zIndex: -1,
@@ -364,7 +366,22 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="glass" style={{ height: '100px', padding: '0 2.5rem', display: 'flex', alignItems: 'center', gap: '2rem', borderTop: '1px solid var(--border-glass)', zIndex: 100 }}>
+      <footer className="glass" style={{ height: '100px', padding: '0 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTop: '1px solid var(--border-glass)', zIndex: 100 }}>
+        <button
+          onClick={() => isPlaying ? stopEngine() : startEngine()}
+          className="glass"
+          style={{
+            width: '50px', height: '50px', borderRadius: '50%',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            background: isPlaying ? 'rgba(255,255,255,0.1)' : 'var(--accent-color)',
+            color: isPlaying ? 'white' : 'black',
+            border: 'none', cursor: 'pointer', transition: 'all 0.3s ease',
+            boxShadow: isPlaying ? 'none' : '0 0 15px var(--accent-glow)'
+          }}
+        >
+          {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="black" />}
+        </button>
+
         <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input
             type="range" min="50" max="60" value={bpm}
@@ -372,9 +389,9 @@ export default function App() {
             style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
           />
         </div>
-        <div style={{ minWidth: '90px', textAlign: 'right' }}>
-          <div style={{ fontSize: '0.7rem', color: 'var(--text-muted)', letterSpacing: '1px' }}>RHYTHM</div>
-          <div style={{ fontSize: '1.4rem', fontWeight: '800', color: 'var(--accent-color)' }}>{bpm} BPM</div>
+        <div style={{ minWidth: '70px', textAlign: 'right' }}>
+          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '1px' }}>RHYTHM</div>
+          <div style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--accent-color)' }}>{bpm} BPM</div>
         </div>
       </footer>
 

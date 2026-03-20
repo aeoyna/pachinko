@@ -5,9 +5,11 @@ export const useRhythmEngine = (bpm: number) => {
     const nextNoteTime = useRef(0);
     const [currentBeat, setCurrentBeat] = useState(0);
     const [lastBeatTime, setLastBeatTime] = useState(0);
+    const [isPlaying, setIsPlaying] = useState(false);
+    const timerID = useRef<number | null>(null);
 
     const playClick = (frequency: number) => {
-        if (!audioContext.current) return;
+        if (!audioContext.current || audioContext.current.state === 'suspended') return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -24,7 +26,7 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     const playSlide = () => {
-        if (!audioContext.current) return;
+        if (!audioContext.current || audioContext.current.state === 'suspended') return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -42,7 +44,7 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     const playRotation = () => {
-        if (!audioContext.current) return;
+        if (!audioContext.current || audioContext.current.state === 'suspended') return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -60,6 +62,11 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     useEffect(() => {
+        if (!isPlaying) {
+            if (timerID.current) clearInterval(timerID.current);
+            return;
+        }
+
         const scheduler = () => {
             if (!audioContext.current) return;
 
@@ -67,26 +74,38 @@ export const useRhythmEngine = (bpm: number) => {
                 const time = nextNoteTime.current;
                 const beatNum = currentBeat % 2;
 
-                // Play beat 1 (High) and beat 2 (Low)
                 playClick(beatNum === 0 ? 880 : 440);
 
                 setLastBeatTime(time * 1000); // ms
                 setCurrentBeat(prev => prev + 1);
-                nextNoteTime.current += 60 / bpm / 2; // 2 beats per whole note cycle? User says "1回の間に2拍うち"
+                nextNoteTime.current += 60 / bpm / 2;
             }
         };
 
-        const timer = setInterval(scheduler, 25);
-        return () => clearInterval(timer);
-    }, [bpm, currentBeat]);
+        timerID.current = setInterval(scheduler, 25);
+        return () => {
+            if (timerID.current) clearInterval(timerID.current);
+        };
+    }, [bpm, currentBeat, isPlaying]);
 
     const startEngine = () => {
         if (!audioContext.current) {
             const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
             audioContext.current = new AudioContextClass();
-            nextNoteTime.current = audioContext.current.currentTime;
+        }
+        if (audioContext.current.state === 'suspended') {
+            audioContext.current.resume();
+        }
+        nextNoteTime.current = audioContext.current.currentTime;
+        setIsPlaying(true);
+    };
+
+    const stopEngine = () => {
+        setIsPlaying(false);
+        if (audioContext.current) {
+            audioContext.current.suspend();
         }
     };
 
-    return { currentBeat, lastBeatTime, startEngine, playSlide, playRotation };
+    return { currentBeat, lastBeatTime, isPlaying, startEngine, stopEngine, playSlide, playRotation };
 };
