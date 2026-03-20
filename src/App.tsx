@@ -29,14 +29,15 @@ export default function App() {
   const [isLotteryRunning, setIsLotteryRunning] = useState(false);
   const [lotteryResult, setLotteryResult] = useState<string | null>(null);
   const [audioStarted, setAudioStarted] = useState(false);
+  const [direction, setDirection] = useState(0); // 1: next, -1: prev
 
-  // Motion values for real-time tracking
-  const x = useMotionValue(0);
-  const y = useMotionValue(0);
-  const rotateX = useTransform(y, [-200, 200], [30, -30]);
-  const rotateY = useTransform(x, [-200, 200], [-30, 30]);
-  const springX = useSpring(x, { stiffness: 300, damping: 30 });
-  const springY = useSpring(y, { stiffness: 300, damping: 30 });
+  const dragY = useMotionValue(0);
+  const dragX = useMotionValue(0);
+  const springY = useSpring(dragY, { stiffness: 400, damping: 40 });
+  const springX = useSpring(dragX, { stiffness: 400, damping: 40 });
+
+  const rotateX = useTransform(springY, [-300, 300], [20, -20]);
+  const rotateY = useTransform(springX, [-300, 300], [-20, 20]);
 
   const { lastBeatTime, startEngine, playSlide, playRotation } = useRhythmEngine(bpm);
 
@@ -98,11 +99,11 @@ export default function App() {
     onDrag: ({ offset: [ox, oy], active }) => {
       if (!audioStarted) return;
       if (active) {
-        x.set(ox);
-        y.set(oy);
+        dragX.set(ox);
+        dragY.set(oy);
       }
     },
-    onDragEnd: ({ direction: [dx, dy], velocity: [vx, vy], tap }) => {
+    onDragEnd: ({ direction: [dx, dy], velocity: [vx, vy], tap, offset: [ox, oy] }) => {
       if (!audioStarted) {
         startEngine();
         setAudioStarted(true);
@@ -111,15 +112,17 @@ export default function App() {
       if (tap) {
         setIsFlipped(!isFlipped);
         playRotation();
-        x.set(0);
-        y.set(0);
+        dragX.set(0);
+        dragY.set(0);
         return;
       }
 
       const vThreshold = 0.2;
+      const dThreshold = 100;
 
-      if (vy > vThreshold && dy < -0.1) { // Swipe Up
+      if (vy > vThreshold && dy < -0.1 || oy < -dThreshold) { // NEXT
         playSlide();
+        setDirection(1);
         const onBeat = validateRhythm();
         setWordIndex(prev => (prev + 1) % WORDS.length);
         setIsFlipped(false);
@@ -131,31 +134,31 @@ export default function App() {
           setCombo(0);
           handleHesoLottery(false);
         }
-      } else if (vy > vThreshold && dy > 0.1) { // Swipe Down
+      } else if (vy > vThreshold && dy > 0.1 || oy > dThreshold) { // PREV
         playSlide();
+        setDirection(-1);
         setWordIndex(prev => (prev - 1 + WORDS.length) % WORDS.length);
         setIsFlipped(false);
         setCombo(0);
-      } else if (vx > vThreshold && dx > 0.1) { // Swipe Right
+      } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // MEMORIZE
         playRotation();
         setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'right' }]);
       }
 
-      // Reset positions with spring
-      x.set(0);
-      y.set(0);
+      dragX.set(0);
+      dragY.set(0);
     }
-  }, { drag: { from: () => [x.get(), y.get()] } });
+  }, { drag: { from: () => [dragX.get(), dragY.get()] } });
 
   return (
-    <div className="app-container" style={{ userSelect: 'none' }}>
+    <div className="app-container" style={{ userSelect: 'none', overflow: 'hidden' }}>
       <motion.div
         animate={{ opacity: [0.05, 0.15, 0.05] }}
         transition={{ duration: 60 / bpm, repeat: Infinity }}
         style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)', pointerEvents: 'none' }}
       />
 
-      <header className="glass" style={{ height: '140px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 10 }}>
+      <header className="glass" style={{ height: '140px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 100 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
             {[...Array(4)].map((_, i) => (
@@ -233,38 +236,87 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Word Card Wrapper with Real-time Animation */}
-        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 20 }}>
-          <motion.div
-            style={{
-              width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d',
-              x: springX, y: springY, rotateX, rotateY
-            }}
-            animate={{ rotateY: isFlipped ? 180 : 0 }}
-            transition={{ type: 'spring', stiffness: 300, damping: 25 }}
-          >
-            {/* Front */}
-            <div className="glass" style={{
-              position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              borderRadius: '32px', padding: '2.5rem', boxShadow: 'inset 0 0 20px rgba(255,255,255,0.05)'
-            }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Master Level</div>
-              <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'white', textAlign: 'center' }}>{WORDS[wordIndex].word}</div>
-              <Heart size={28} style={{ position: 'absolute', top: '30px', right: '30px', color: 'rgba(255,255,255,0.05)' }} />
-            </div>
+        {/* TikTok Style Card Stack */}
+        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 10, position: 'relative' }}>
+          <AnimatePresence mode="popLayout" initial={false}>
+            <motion.div
+              key={wordIndex}
+              custom={direction}
+              variants={{
+                enter: (d: number) => ({
+                  y: d > 0 ? 500 : -500,
+                  opacity: 0,
+                  scale: 0.8,
+                  rotateX: d > 0 ? -45 : 45
+                }),
+                center: {
+                  y: 0,
+                  x: 0,
+                  opacity: 1,
+                  scale: 1,
+                  rotateX: 0,
+                  zIndex: 10
+                },
+                exit: (d: number) => ({
+                  y: d > 0 ? -500 : 500,
+                  opacity: 0,
+                  scale: 0.8,
+                  rotateX: d > 0 ? 45 : -45,
+                  zIndex: 0
+                })
+              }}
+              initial="enter"
+              animate="center"
+              exit="exit"
+              transition={{
+                y: { type: 'spring', stiffness: 300, damping: 30 },
+                opacity: { duration: 0.2 }
+              }}
+              style={{
+                width: '100%', height: '100%', position: 'absolute',
+                transformStyle: 'preserve-3d',
+                pointerEvents: 'auto'
+              }}
+            >
+              <motion.div
+                style={{
+                  width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d',
+                  x: springX, y: springY, rotateX, rotateY
+                }}
+                animate={{ rotateY: isFlipped ? 180 : 0 }}
+                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+              >
+                {/* Front */}
+                <div className="glass" style={{
+                  position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '32px', padding: '2.5rem', boxShadow: 'inset 0 0 20px rgba(255,255,255,0.05)'
+                }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Master Level</div>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'white', textAlign: 'center' }}>{WORDS[wordIndex].word}</div>
+                  <Heart size={28} style={{ position: 'absolute', top: '30px', right: '30px', color: 'rgba(255,255,255,0.05)' }} />
+                </div>
 
-            {/* Back */}
-            <div className="glass" style={{
-              position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              borderRadius: '32px', padding: '2.5rem', transform: 'rotateY(180deg)',
-              background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0) 100%)'
-            }}>
-              <div style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Definition</div>
-              <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--accent-color)', textAlign: 'center' }}>{WORDS[wordIndex].definition}</div>
-            </div>
-          </motion.div>
+                {/* Back */}
+                <div className="glass" style={{
+                  position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                  borderRadius: '32px', padding: '2.5rem', transform: 'rotateY(180deg)',
+                  background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0) 100%)'
+                }}>
+                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Definition</div>
+                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--accent-color)', textAlign: 'center' }}>{WORDS[wordIndex].definition}</div>
+                </div>
+              </motion.div>
+            </motion.div>
+          </AnimatePresence>
+
+          {/* Under-Card Mock for stacking feel */}
+          <div style={{
+            position: 'absolute', top: 10, bottom: -10, left: 10, right: 10,
+            background: 'rgba(255,255,255,0.03)', borderRadius: '32px', zIndex: -1,
+            transform: 'scale(0.95) translateY(10px)', border: '1px solid rgba(255,255,255,0.05)'
+          }} />
         </div>
 
         <AnimatePresence>
@@ -280,21 +332,21 @@ export default function App() {
               }}
               exit={{ opacity: 0 }}
               transition={{ duration: 1, ease: 'easeInOut' }}
-              style={{ position: 'absolute', color: 'var(--accent-color)', zIndex: 100 }}
+              style={{ position: 'absolute', color: 'var(--accent-color)', zIndex: 1000 }}
             >
               <Zap fill="currentColor" size={40} className="glow" />
             </motion.div>
           ))}
         </AnimatePresence>
 
-        <div style={{ position: 'absolute', bottom: '15px', width: '100%', display: 'flex', justifyContent: 'space-around', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '700', opacity: 0.6 }}>
+        <div style={{ position: 'absolute', bottom: '15px', width: '100%', display: 'flex', justifyContent: 'space-around', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '700', opacity: 0.6, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronUp size={14} /> NEXT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronDown size={14} /> PREV</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronRight size={14} /> MEMORIZE</div>
         </div>
       </main>
 
-      <footer className="glass" style={{ height: '100px', padding: '0 2.5rem', display: 'flex', alignItems: 'center', gap: '2rem', borderTop: '1px solid var(--border-glass)' }}>
+      <footer className="glass" style={{ height: '100px', padding: '0 2.5rem', display: 'flex', alignItems: 'center', gap: '2rem', borderTop: '1px solid var(--border-glass)', zIndex: 100 }}>
         <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input
             type="range" min="50" max="60" value={bpm}
@@ -311,7 +363,7 @@ export default function App() {
       {!audioStarted && (
         <div
           onClick={() => { startEngine(); setAudioStarted(true); }}
-          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 200, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
           <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
             <Play size={80} fill="var(--accent-color)" color="var(--accent-color)" />
@@ -327,7 +379,7 @@ export default function App() {
             animate={{ scale: 1, rotate: 0, opacity: 1 }}
             exit={{ scale: 2, opacity: 0 }}
             style={{
-              position: 'absolute', top: '35%', left: '5%', right: '5%', zIndex: 150,
+              position: 'absolute', top: '35%', left: '5%', right: '5%', zIndex: 1500,
               background: 'linear-gradient(45deg, #ffd700, #ff8c00)', color: 'black',
               padding: '3rem 1rem', borderRadius: '30px', textAlign: 'center',
               boxShadow: '0 0 50px var(--accent-glow)', fontWeight: '900', fontSize: '3.5rem'
