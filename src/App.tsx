@@ -117,7 +117,6 @@ export default function App() {
       }
 
       const vThreshold = 0.2;
-      const dThreshold = 80;
 
       if (vy > vThreshold && dy < -0.1) { // Swipe Up
         playSlide();
