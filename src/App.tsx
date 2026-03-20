@@ -16,10 +16,44 @@ const WORDS = [
   { id: 8, word: 'eloquent', definition: '雄弁な' },
 ];
 
+function WordCard({ word, definition, isFlipped, onFlip }: { word: string; definition: string; isFlipped: boolean; onFlip: () => void }) {
+  return (
+    <motion.div
+      className="card-content"
+      style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d' }}
+      animate={{ rotateY: isFlipped ? 180 : 0 }}
+      transition={{ type: 'spring', stiffness: 300, damping: 25 }}
+      onClick={onFlip}
+    >
+      {/* Front */}
+      <div className="glass" style={{
+        position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        borderRadius: '32px', padding: '2.5rem', boxShadow: 'inset 0 0 20px rgba(255,255,255,0.05)'
+      }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Master Level</div>
+        <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'white', textAlign: 'center' }}>{word}</div>
+        <Heart size={28} style={{ position: 'absolute', top: '30px', right: '30px', color: 'rgba(255,255,255,0.05)' }} />
+      </div>
+
+      {/* Back */}
+      <div className="glass" style={{
+        position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
+        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+        borderRadius: '32px', padding: '2.5rem', transform: 'rotateY(180deg)',
+        background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0) 100%)'
+      }}>
+        <div style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Definition</div>
+        <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--accent-color)', textAlign: 'center' }}>{definition}</div>
+      </div>
+    </motion.div>
+  );
+}
+
 export default function App() {
   const [bpm, setBpm] = useState(60);
   const [wordIndex, setWordIndex] = useState(0);
-  const [isFlipped, setIsFlipped] = useState(false);
+  const [flipStates, setFlipStates] = useState<Record<number, boolean>>({});
   const [combo, setCombo] = useState(0);
   const [stocks, setStocks] = useState(0);
   const [isRush, setIsRush] = useState(false);
@@ -29,7 +63,7 @@ export default function App() {
   const [isLotteryRunning, setIsLotteryRunning] = useState(false);
   const [lotteryResult, setLotteryResult] = useState<string | null>(null);
   const [audioStarted, setAudioStarted] = useState(false);
-  const [direction, setDirection] = useState(0); // 1: next, -1: prev
+  const [direction, setDirection] = useState(0);
 
   const dragY = useMotionValue(0);
   const dragX = useMotionValue(0);
@@ -59,6 +93,11 @@ export default function App() {
     const window = interval * 0.4;
     return diff < window;
   }, [bpm, lastBeatTime]);
+
+  const toggleFlip = useCallback((index: number) => {
+    setFlipStates(prev => ({ ...prev, [index]: !prev[index] }));
+    playRotation();
+  }, [playRotation]);
 
   const handleHesoLottery = (onBeat: boolean) => {
     const prob = onBeat ? 1 / 5 : 1 / 6;
@@ -110,8 +149,7 @@ export default function App() {
       }
 
       if (tap) {
-        setIsFlipped(!isFlipped);
-        playRotation();
+        toggleFlip(wordIndex);
         dragX.set(0);
         dragY.set(0);
         return;
@@ -125,7 +163,6 @@ export default function App() {
         setDirection(1);
         const onBeat = validateRhythm();
         setWordIndex(prev => (prev + 1) % WORDS.length);
-        setIsFlipped(false);
         if (onBeat) {
           setCombo(c => c + 1);
           handleHesoLottery(true);
@@ -138,7 +175,6 @@ export default function App() {
         playSlide();
         setDirection(-1);
         setWordIndex(prev => (prev - 1 + WORDS.length) % WORDS.length);
-        setIsFlipped(false);
         setCombo(0);
       } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // MEMORIZE
         playRotation();
@@ -236,7 +272,6 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* TikTok Style Card Stack */}
         <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 10, position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
@@ -283,35 +318,18 @@ export default function App() {
                   width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d',
                   x: springX, y: springY, rotateX, rotateY
                 }}
-                animate={{ rotateY: isFlipped ? 180 : 0 }}
-                transition={{ type: 'spring', stiffness: 300, damping: 25 }}
               >
-                {/* Front */}
-                <div className="glass" style={{
-                  position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '32px', padding: '2.5rem', boxShadow: 'inset 0 0 20px rgba(255,255,255,0.05)'
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Master Level</div>
-                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'white', textAlign: 'center' }}>{WORDS[wordIndex].word}</div>
-                  <Heart size={28} style={{ position: 'absolute', top: '30px', right: '30px', color: 'rgba(255,255,255,0.05)' }} />
-                </div>
-
-                {/* Back */}
-                <div className="glass" style={{
-                  position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
-                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-                  borderRadius: '32px', padding: '2.5rem', transform: 'rotateY(180deg)',
-                  background: 'linear-gradient(135deg, rgba(255, 215, 0, 0.1) 0%, rgba(255, 215, 0, 0) 100%)'
-                }}>
-                  <div style={{ fontSize: '0.8rem', color: 'var(--accent-color)', marginBottom: '2rem', textTransform: 'uppercase', letterSpacing: '3px', fontWeight: '300' }}>Definition</div>
-                  <div style={{ fontSize: '2.5rem', fontWeight: '700', color: 'var(--accent-color)', textAlign: 'center' }}>{WORDS[wordIndex].definition}</div>
-                </div>
+                <WordCard
+                  word={WORDS[wordIndex].word}
+                  definition={WORDS[wordIndex].definition}
+                  isFlipped={!!flipStates[wordIndex]}
+                  onFlip={() => toggleFlip(wordIndex)}
+                />
               </motion.div>
             </motion.div>
           </AnimatePresence>
 
-          {/* Under-Card Mock for stacking feel */}
+          {/* Under-Card Mock */}
           <div style={{
             position: 'absolute', top: 10, bottom: -10, left: 10, right: 10,
             background: 'rgba(255,255,255,0.03)', borderRadius: '32px', zIndex: -1,
