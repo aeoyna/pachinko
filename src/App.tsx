@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { useGesture } from '@use-gesture/react';
-import { Zap, Heart, ChevronUp, ChevronDown, ChevronRight, Play, Pause } from 'lucide-react';
+import { Zap, Heart, ChevronUp, ChevronDown, Play, Pause, Archive } from 'lucide-react';
 import { useRhythmEngine } from './hooks/useRhythmEngine';
 import './index.css';
 
@@ -52,12 +52,13 @@ export default function App() {
   const [bpm, setBpm] = useState(60);
   const [wordIndex, setWordIndex] = useState(0);
   const [flipStates, setFlipStates] = useState<Record<number, boolean>>({});
+  const [archivedCount, setArchivedCount] = useState(0);
   const [combo, setCombo] = useState(0);
   const [stocks, setStocks] = useState(0);
   const [isRush, setIsRush] = useState(false);
   const [rushTime, setRushTime] = useState(0);
   const [games] = useState(100);
-  const [souls, setSouls] = useState<{ id: number; x: number; y: number; target: 'hen' | 'right' }[]>([]);
+  const [souls, setSouls] = useState<{ id: number; x: number; y: number; target: 'hen' | 'archive' }[]>([]);
   const [isLotteryRunning, setIsLotteryRunning] = useState(false);
   const [lotteryResult, setLotteryResult] = useState<string | null>(null);
   const [audioStarted, setAudioStarted] = useState(false);
@@ -146,7 +147,6 @@ export default function App() {
         setAudioStarted(true);
       }
 
-      // Improved tap detection: count as tap if movement is small
       const movement = Math.sqrt(ox * ox + oy * oy);
       if (tap || movement < 20) {
         toggleFlip(wordIndex);
@@ -158,7 +158,7 @@ export default function App() {
       const vThreshold = 0.2;
       const dThreshold = 100;
 
-      if (vy > vThreshold && dy < -0.1 || oy < -dThreshold) { // NEXT
+      if (vy > vThreshold && dy < -0.1 || oy < -dThreshold) { // NEXT (UP)
         playSlide();
         setDirection(1);
         const onBeat = validateRhythm();
@@ -171,14 +171,15 @@ export default function App() {
           setCombo(0);
           handleHesoLottery(false);
         }
-      } else if (vy > vThreshold && dy > 0.1 || oy > dThreshold) { // PREV
+      } else if (vy > vThreshold && dy > 0.1 || oy > dThreshold) { // PREV (DOWN)
         playSlide();
         setDirection(-1);
         setWordIndex(prev => (prev - 1 + WORDS.length) % WORDS.length);
         setCombo(0);
-      } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // MEMORIZE
+      } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // ARCHIVE (RIGHT)
         playRotation();
-        setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'right' }]);
+        setArchivedCount(c => c + 1);
+        setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'archive' }]);
       }
 
       dragX.set(0);
@@ -189,7 +190,7 @@ export default function App() {
   return (
     <div className="app-container" style={{ userSelect: 'none', overflow: 'hidden' }}>
       <motion.div
-        animate={{ opacity: [0.05, 0.15, 0.05] }}
+        animate={{ opacity: isPlaying ? [0.05, 0.15, 0.05] : 0.05 }}
         transition={{ duration: 60 / bpm, repeat: Infinity }}
         style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)', pointerEvents: 'none' }}
       />
@@ -213,8 +214,10 @@ export default function App() {
               </motion.div>
             ))}
           </div>
-          <div className="glass" style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: '700', color: 'var(--accent-color)', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)' }}>
-            {games}G
+          <div className="glass" style={{ padding: '6px 14px', borderRadius: '20px', fontSize: '0.9rem', fontWeight: '700', color: 'var(--accent-color)', boxShadow: 'inset 0 0 10px rgba(0,0,0,0.5)', display: 'flex', gap: '10px' }}>
+            <span>{games}G</span>
+            <span style={{ color: 'white', opacity: 0.5 }}>|</span>
+            <span style={{ color: 'white' }}><Archive size={14} style={{ marginBottom: '-2px', marginRight: '4px' }} />{archivedCount}</span>
           </div>
         </div>
 
@@ -293,10 +296,10 @@ export default function App() {
                   zIndex: 10
                 },
                 exit: (d: number) => ({
-                  y: d > 0 ? -500 : 500,
+                  y: d > 0 ? -1000 : 1000,
                   opacity: 0,
-                  scale: 0.8,
-                  rotateX: d > 0 ? 45 : -45,
+                  scale: 0.5,
+                  rotateX: d > 0 ? 90 : -90,
                   zIndex: 0
                 })
               }}
@@ -329,6 +332,7 @@ export default function App() {
             </motion.div>
           </AnimatePresence>
 
+          {/* Under-Card Mock */}
           <div style={{
             position: 'absolute', top: 10, bottom: -10, left: 10, right: 10,
             background: 'rgba(255,255,255,0.03)', borderRadius: '32px', zIndex: -1,
@@ -345,11 +349,11 @@ export default function App() {
                 scale: [1, 1.5, 0.5],
                 opacity: [1, 0.8, 0],
                 y: soul.target === 'hen' ? -450 : -50,
-                x: soul.target === 'right' ? 350 : 0
+                x: soul.target === 'archive' ? 350 : 0
               }}
               exit={{ opacity: 0 }}
               transition={{ duration: 1, ease: 'easeInOut' }}
-              style={{ position: 'absolute', color: 'var(--accent-color)', zIndex: 1000 }}
+              style={{ position: 'absolute', color: soul.target === 'archive' ? '#3b82f6' : 'var(--accent-color)', zIndex: 1000 }}
             >
               <Zap fill="currentColor" size={40} className="glow" />
             </motion.div>
@@ -359,7 +363,7 @@ export default function App() {
         <div style={{ position: 'absolute', bottom: '15px', width: '100%', display: 'flex', justifyContent: 'space-around', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '700', opacity: 0.6, zIndex: 50 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronUp size={14} /> NEXT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronDown size={14} /> PREV</div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronRight size={14} /> MEMORIZE</div>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><Archive size={14} /> ARCHIVE</div>
         </div>
       </main>
 
