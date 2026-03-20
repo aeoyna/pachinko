@@ -25,7 +25,6 @@ function WordCard({ word, definition, isFlipped, onFlip }: { word: string; defin
       transition={{ type: 'spring', stiffness: 300, damping: 25 }}
       onClick={onFlip}
     >
-      {/* Front */}
       <div className="glass" style={{
         position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -36,7 +35,6 @@ function WordCard({ word, definition, isFlipped, onFlip }: { word: string; defin
         <Heart size={28} style={{ position: 'absolute', top: '30px', right: '30px', color: 'rgba(255,255,255,0.05)' }} />
       </div>
 
-      {/* Back */}
       <div className="glass" style={{
         position: 'absolute', width: '100%', height: '100%', backfaceVisibility: 'hidden',
         display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
@@ -73,7 +71,7 @@ export default function App() {
   const rotateX = useTransform(springY, [-300, 300], [20, -20]);
   const rotateY = useTransform(springX, [-300, 300], [-20, 20]);
 
-  const { lastBeatTime, isPlaying, startEngine, stopEngine, playSlide, playRotation } = useRhythmEngine(bpm);
+  const { lastBeatTime, isPlaying, startEngine, toggleEngine, playSlide, playRotation } = useRhythmEngine(bpm);
 
   useEffect(() => {
     if (isRush && rushTime > 0) {
@@ -136,7 +134,7 @@ export default function App() {
 
   const bind = useGesture({
     onDrag: ({ offset: [ox, oy], active }) => {
-      if (!audioStarted || !isPlaying) return;
+      if (!audioStarted) return;
       if (active) {
         dragX.set(ox);
         dragY.set(oy);
@@ -146,22 +144,21 @@ export default function App() {
       if (!audioStarted) {
         startEngine();
         setAudioStarted(true);
-        return;
       }
-      if (!isPlaying) return;
 
-      if (tap) {
+      // Improved tap detection: count as tap if movement is small
+      const movement = Math.sqrt(ox * ox + oy * oy);
+      if (tap || movement < 20) {
         toggleFlip(wordIndex);
         dragX.set(0);
         dragY.set(0);
         return;
       }
 
-      // Refined thresholds for better sensitivity
-      const vThreshold = 0.1; // Lowered from 0.2
-      const dThreshold = 50;  // Lowered from 100
+      const vThreshold = 0.2;
+      const dThreshold = 100;
 
-      if ((vy > vThreshold && dy < -0.1) || oy < -dThreshold) { // NEXT
+      if (vy > vThreshold && dy < -0.1 || oy < -dThreshold) { // NEXT
         playSlide();
         setDirection(1);
         const onBeat = validateRhythm();
@@ -174,12 +171,12 @@ export default function App() {
           setCombo(0);
           handleHesoLottery(false);
         }
-      } else if ((vy > vThreshold && dy > 0.1) || oy > dThreshold) { // PREV
+      } else if (vy > vThreshold && dy > 0.1 || oy > dThreshold) { // PREV
         playSlide();
         setDirection(-1);
         setWordIndex(prev => (prev - 1 + WORDS.length) % WORDS.length);
         setCombo(0);
-      } else if ((vx > vThreshold && dx > 0.1) || ox > dThreshold) { // MEMORIZE
+      } else if (vx > vThreshold && dx > 0.1 || ox > dThreshold) { // MEMORIZE
         playRotation();
         setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'right' }]);
       }
@@ -187,12 +184,12 @@ export default function App() {
       dragX.set(0);
       dragY.set(0);
     }
-  }, { drag: { from: () => [dragX.get(), dragY.get()], threshold: 5 } }); // Added drag threshold
+  }, { drag: { from: () => [dragX.get(), dragY.get()] } });
 
   return (
     <div className="app-container" style={{ userSelect: 'none', overflow: 'hidden' }}>
       <motion.div
-        animate={{ opacity: isPlaying ? [0.05, 0.15, 0.05] : 0.05 }}
+        animate={{ opacity: [0.05, 0.15, 0.05] }}
         transition={{ duration: 60 / bpm, repeat: Infinity }}
         style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)', pointerEvents: 'none' }}
       />
@@ -224,7 +221,7 @@ export default function App() {
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
           <motion.div
             animate={{
-              y: isPlaying ? [0, -8, 0] : 0,
+              y: [0, -8, 0],
               scale: isLotteryRunning ? [1, 1.1, 1] : 1
             }}
             transition={{ repeat: Infinity, duration: 1 }}
@@ -257,7 +254,7 @@ export default function App() {
 
       <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
         <motion.div
-          animate={{ scale: isPlaying ? [1, 1.1, 1] : 1, opacity: isPlaying ? [0.1, 0.3, 0.1] : 0.1 }}
+          animate={{ scale: isPlaying ? [1, 1.1, 1] : 1, opacity: isPlaying ? [0.1, 0.3, 0.1] : 0.05 }}
           transition={{ duration: 60 / bpm / 2, repeat: Infinity }}
           style={{ position: 'absolute', width: '350px', height: '350px', border: '2px solid var(--accent-glow)', borderRadius: '50%', pointerEvents: 'none' }}
         />
@@ -275,17 +272,17 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: isPlaying ? 'grab' : 'default', zIndex: 10, position: 'relative' }}>
+        <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 10, position: 'relative' }}>
           <AnimatePresence mode="popLayout" initial={false}>
             <motion.div
               key={wordIndex}
               custom={direction}
               variants={{
                 enter: (d: number) => ({
-                  y: d > 0 ? 500 : (d < 0 ? -500 : 0),
+                  y: d > 0 ? 500 : -500,
                   opacity: 0,
                   scale: 0.8,
-                  rotateX: d > 0 ? -45 : (d < 0 ? 45 : 0)
+                  rotateX: d > 0 ? -45 : 45
                 }),
                 center: {
                   y: 0,
@@ -296,10 +293,10 @@ export default function App() {
                   zIndex: 10
                 },
                 exit: (d: number) => ({
-                  y: d > 0 ? -500 : (d < 0 ? 500 : 0),
+                  y: d > 0 ? -500 : 500,
                   opacity: 0,
                   scale: 0.8,
-                  rotateX: d > 0 ? 45 : (d < 0 ? -45 : 0),
+                  rotateX: d > 0 ? 45 : -45,
                   zIndex: 0
                 })
               }}
@@ -313,7 +310,7 @@ export default function App() {
               style={{
                 width: '100%', height: '100%', position: 'absolute',
                 transformStyle: 'preserve-3d',
-                pointerEvents: isPlaying ? 'auto' : 'none'
+                pointerEvents: 'auto'
               }}
             >
               <motion.div
@@ -326,7 +323,7 @@ export default function App() {
                   word={WORDS[wordIndex].word}
                   definition={WORDS[wordIndex].definition}
                   isFlipped={!!flipStates[wordIndex]}
-                  onFlip={() => isPlaying && toggleFlip(wordIndex)}
+                  onFlip={() => toggleFlip(wordIndex)}
                 />
               </motion.div>
             </motion.div>
@@ -366,20 +363,19 @@ export default function App() {
         </div>
       </main>
 
-      <footer className="glass" style={{ height: '100px', padding: '0 1.5rem', display: 'flex', alignItems: 'center', gap: '1rem', borderTop: '1px solid var(--border-glass)', zIndex: 100 }}>
+      <footer className="glass" style={{ height: '100px', padding: '0 2rem', display: 'flex', alignItems: 'center', gap: '1.5rem', borderTop: '1px solid var(--border-glass)', zIndex: 100 }}>
         <button
-          onClick={() => isPlaying ? stopEngine() : startEngine()}
-          className="glass"
+          onClick={toggleEngine}
+          className="glass-button"
           style={{
-            width: '50px', height: '50px', borderRadius: '50%',
+            width: '45px', height: '45px', borderRadius: '50%', border: 'none',
             display: 'flex', alignItems: 'center', justifyContent: 'center',
-            background: isPlaying ? 'rgba(255,255,255,0.1)' : 'var(--accent-color)',
-            color: isPlaying ? 'white' : 'black',
-            border: 'none', cursor: 'pointer', transition: 'all 0.3s ease',
-            boxShadow: isPlaying ? 'none' : '0 0 15px var(--accent-glow)'
+            background: isPlaying ? 'var(--accent-color)' : 'rgba(255,255,255,0.05)',
+            boxShadow: isPlaying ? '0 0 15px var(--accent-glow)' : 'none',
+            color: isPlaying ? 'black' : 'white', cursor: 'pointer'
           }}
         >
-          {isPlaying ? <Pause size={24} fill="white" /> : <Play size={24} fill="black" />}
+          {isPlaying ? <Pause size={20} fill="currentColor" /> : <Play size={20} fill="currentColor" style={{ marginLeft: '2px' }} />}
         </button>
 
         <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
@@ -389,8 +385,8 @@ export default function App() {
             style={{ width: '100%', height: '8px', background: 'rgba(255,255,255,0.05)', borderRadius: '4px', accentColor: 'var(--accent-color)', cursor: 'pointer' }}
           />
         </div>
-        <div style={{ minWidth: '70px', textAlign: 'right' }}>
-          <div style={{ fontSize: '0.6rem', color: 'var(--text-muted)', letterSpacing: '1px' }}>RHYTHM</div>
+        <div style={{ minWidth: '80px', textAlign: 'right' }}>
+          <div style={{ fontSize: '0.65rem', color: 'var(--text-muted)', letterSpacing: '1px' }}>RHYTHM</div>
           <div style={{ fontSize: '1.2rem', fontWeight: '800', color: 'var(--accent-color)' }}>{bpm} BPM</div>
         </div>
       </footer>
@@ -398,7 +394,7 @@ export default function App() {
       {!audioStarted && (
         <div
           onClick={() => { startEngine(); setAudioStarted(true); }}
-          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 1000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
+          style={{ position: 'absolute', inset: 0, background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)', zIndex: 2000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', cursor: 'pointer' }}
         >
           <motion.div animate={{ scale: [1, 1.1, 1] }} transition={{ repeat: Infinity, duration: 1 }}>
             <Play size={80} fill="var(--accent-color)" color="var(--accent-color)" />

@@ -3,10 +3,9 @@ import { useEffect, useRef, useState } from 'react';
 export const useRhythmEngine = (bpm: number) => {
     const audioContext = useRef<AudioContext | null>(null);
     const nextNoteTime = useRef(0);
+    const [isPlaying, setIsPlaying] = useState(false);
     const [currentBeat, setCurrentBeat] = useState(0);
     const [lastBeatTime, setLastBeatTime] = useState(0);
-    const [isPlaying, setIsPlaying] = useState(false);
-    const timerID = useRef<number | null>(null);
 
     const playClick = (frequency: number) => {
         if (!audioContext.current || audioContext.current.state === 'suspended') return;
@@ -26,7 +25,7 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     const playSlide = () => {
-        if (!audioContext.current || audioContext.current.state === 'suspended') return;
+        if (!audioContext.current) return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -44,7 +43,7 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     const playRotation = () => {
-        if (!audioContext.current || audioContext.current.state === 'suspended') return;
+        if (!audioContext.current) return;
         const osc = audioContext.current.createOscillator();
         const envelope = audioContext.current.createGain();
 
@@ -62,10 +61,7 @@ export const useRhythmEngine = (bpm: number) => {
     };
 
     useEffect(() => {
-        if (!isPlaying) {
-            if (timerID.current) clearInterval(timerID.current);
-            return;
-        }
+        if (!isPlaying) return;
 
         const scheduler = () => {
             if (!audioContext.current) return;
@@ -82,10 +78,8 @@ export const useRhythmEngine = (bpm: number) => {
             }
         };
 
-        timerID.current = setInterval(scheduler, 25);
-        return () => {
-            if (timerID.current) clearInterval(timerID.current);
-        };
+        const timer = setInterval(scheduler, 25);
+        return () => clearInterval(timer);
     }, [bpm, currentBeat, isPlaying]);
 
     const startEngine = () => {
@@ -102,10 +96,12 @@ export const useRhythmEngine = (bpm: number) => {
 
     const stopEngine = () => {
         setIsPlaying(false);
-        if (audioContext.current) {
-            audioContext.current.suspend();
-        }
     };
 
-    return { currentBeat, lastBeatTime, isPlaying, startEngine, stopEngine, playSlide, playRotation };
+    const toggleEngine = () => {
+        if (isPlaying) stopEngine();
+        else startEngine();
+    };
+
+    return { currentBeat, lastBeatTime, isPlaying, startEngine, stopEngine, toggleEngine, playSlide, playRotation };
 };
