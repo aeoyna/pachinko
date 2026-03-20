@@ -1,7 +1,7 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import { useState, useEffect, useCallback } from 'react';
+import { motion, AnimatePresence, useMotionValue, useTransform, useSpring } from 'framer-motion';
 import { useGesture } from '@use-gesture/react';
-import { Settings, Zap, Heart, Trophy, Timer, ChevronUp, ChevronDown, ChevronRight, Play } from 'lucide-react';
+import { Zap, Heart, ChevronUp, ChevronDown, ChevronRight, Play } from 'lucide-react';
 import { useRhythmEngine } from './hooks/useRhythmEngine';
 import './index.css';
 
@@ -24,13 +24,21 @@ export default function App() {
   const [stocks, setStocks] = useState(0);
   const [isRush, setIsRush] = useState(false);
   const [rushTime, setRushTime] = useState(0);
-  const [games, setGames] = useState(100);
+  const [games] = useState(100);
   const [souls, setSouls] = useState<{ id: number; x: number; y: number; target: 'hen' | 'right' }[]>([]);
   const [isLotteryRunning, setIsLotteryRunning] = useState(false);
   const [lotteryResult, setLotteryResult] = useState<string | null>(null);
   const [audioStarted, setAudioStarted] = useState(false);
 
-  const { currentBeat, lastBeatTime, startEngine, playSlide, playRotation } = useRhythmEngine(bpm);
+  // Motion values for real-time tracking
+  const x = useMotionValue(0);
+  const y = useMotionValue(0);
+  const rotateX = useTransform(y, [-200, 200], [30, -30]);
+  const rotateY = useTransform(x, [-200, 200], [-30, 30]);
+  const springX = useSpring(x, { stiffness: 300, damping: 30 });
+  const springY = useSpring(y, { stiffness: 300, damping: 30 });
+
+  const { lastBeatTime, startEngine, playSlide, playRotation } = useRhythmEngine(bpm);
 
   useEffect(() => {
     if (isRush && rushTime > 0) {
@@ -47,7 +55,7 @@ export default function App() {
     const now = Date.now();
     const interval = (60 / bpm / 2) * 1000;
     const diff = Math.abs(now - lastBeatTime);
-    const window = interval * 0.4; // 40% window for easier play
+    const window = interval * 0.4;
     return diff < window;
   }, [bpm, lastBeatTime]);
 
@@ -57,7 +65,6 @@ export default function App() {
       setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'hen' }]);
       setTimeout(() => {
         setStocks(s => Math.min(s + 1, 4));
-        // Prompt: immediate lottery
         triggerLottery();
       }, 800);
     }
@@ -88,7 +95,14 @@ export default function App() {
   };
 
   const bind = useGesture({
-    onDragEnd: ({ direction: [dx, dy], velocity: [vx, vy], tap, last }) => {
+    onDrag: ({ offset: [ox, oy], active }) => {
+      if (!audioStarted) return;
+      if (active) {
+        x.set(ox);
+        y.set(oy);
+      }
+    },
+    onDragEnd: ({ direction: [dx, dy], velocity: [vx, vy], tap }) => {
       if (!audioStarted) {
         startEngine();
         setAudioStarted(true);
@@ -97,12 +111,13 @@ export default function App() {
       if (tap) {
         setIsFlipped(!isFlipped);
         playRotation();
+        x.set(0);
+        y.set(0);
         return;
       }
 
-      // Lower thresholds for easier swiping
-      const vThreshold = 0.1;
-      const dThreshold = 20;
+      const vThreshold = 0.2;
+      const dThreshold = 80;
 
       if (vy > vThreshold && dy < -0.1) { // Swipe Up
         playSlide();
@@ -126,19 +141,21 @@ export default function App() {
         playRotation();
         setSouls(prev => [...prev, { id: Date.now(), x: 0, y: 0, target: 'right' }]);
       }
+
+      // Reset positions with spring
+      x.set(0);
+      y.set(0);
     }
-  }, { drag: { threshold: 10 } });
+  }, { drag: { from: () => [x.get(), y.get()] } });
 
   return (
     <div className="app-container" style={{ userSelect: 'none' }}>
-      {/* Dynamic Background Pulse */}
       <motion.div
         animate={{ opacity: [0.05, 0.15, 0.05] }}
         transition={{ duration: 60 / bpm, repeat: Infinity }}
         style={{ position: 'absolute', inset: 0, background: 'radial-gradient(circle, var(--accent-glow) 0%, transparent 70%)', pointerEvents: 'none' }}
       />
 
-      {/* Header: Hen, Stocks, Lotto */}
       <header className="glass" style={{ height: '140px', padding: '1rem', display: 'flex', flexDirection: 'column', gap: '0.5rem', zIndex: 10 }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
           <div style={{ display: 'flex', gap: '8px' }}>
@@ -164,7 +181,6 @@ export default function App() {
         </div>
 
         <div style={{ flex: 1, display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative' }}>
-          {/* Hen (Heso) */}
           <motion.div
             animate={{
               y: [0, -8, 0],
@@ -176,7 +192,6 @@ export default function App() {
             <img src="/assets/images/hen.png" style={{ width: '100%', height: '100%', objectFit: 'contain' }} alt="hen" />
           </motion.div>
 
-          {/* Lottery Reels */}
           <div style={{
             fontSize: '2.8rem', fontWeight: '950', letterSpacing: '10px',
             color: isRush ? 'var(--accent-color)' : 'white',
@@ -199,16 +214,13 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Area */}
       <main style={{ flex: 1, position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '1rem' }}>
-        {/* Rhythm Indicator (Beat) */}
         <motion.div
           animate={{ scale: [1, 1.1, 1], opacity: [0.1, 0.3, 0.1] }}
           transition={{ duration: 60 / bpm / 2, repeat: Infinity }}
           style={{ position: 'absolute', width: '350px', height: '350px', border: '2px solid var(--accent-glow)', borderRadius: '50%', pointerEvents: 'none' }}
         />
 
-        {/* Combo Counter */}
         <AnimatePresence>
           {combo > 0 && (
             <motion.div
@@ -222,10 +234,13 @@ export default function App() {
           )}
         </AnimatePresence>
 
-        {/* Word Card Wrapper */}
+        {/* Word Card Wrapper with Real-time Animation */}
         <div {...bind()} style={{ width: '100%', maxWidth: '330px', height: '440px', perspective: '1200px', cursor: 'grab', zIndex: 20 }}>
           <motion.div
-            style={{ width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d' }}
+            style={{
+              width: '100%', height: '100%', position: 'relative', transformStyle: 'preserve-3d',
+              x: springX, y: springY, rotateX, rotateY
+            }}
             animate={{ rotateY: isFlipped ? 180 : 0 }}
             transition={{ type: 'spring', stiffness: 300, damping: 25 }}
           >
@@ -253,7 +268,6 @@ export default function App() {
           </motion.div>
         </div>
 
-        {/* Action Souls */}
         <AnimatePresence>
           {souls.map(soul => (
             <motion.div
@@ -274,7 +288,6 @@ export default function App() {
           ))}
         </AnimatePresence>
 
-        {/* Gestures Guide */}
         <div style={{ position: 'absolute', bottom: '15px', width: '100%', display: 'flex', justifyContent: 'space-around', color: 'var(--text-muted)', fontSize: '0.75rem', fontWeight: '700', opacity: 0.6 }}>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronUp size={14} /> NEXT</div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}><ChevronDown size={14} /> PREV</div>
@@ -282,7 +295,6 @@ export default function App() {
         </div>
       </main>
 
-      {/* Footer: BPM Control */}
       <footer className="glass" style={{ height: '100px', padding: '0 2.5rem', display: 'flex', alignItems: 'center', gap: '2rem', borderTop: '1px solid var(--border-glass)' }}>
         <div style={{ flex: 1, position: 'relative', display: 'flex', alignItems: 'center' }}>
           <input
@@ -297,7 +309,6 @@ export default function App() {
         </div>
       </footer>
 
-      {/* Initial Interaction Overlay */}
       {!audioStarted && (
         <div
           onClick={() => { startEngine(); setAudioStarted(true); }}
@@ -310,7 +321,6 @@ export default function App() {
         </div>
       )}
 
-      {/* Rush Overlay */}
       <AnimatePresence>
         {isRush && rushTime > 95 && (
           <motion.div

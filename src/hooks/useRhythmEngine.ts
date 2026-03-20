@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+import { useEffect, useRef, useState } from 'react';
 
 export const useRhythmEngine = (bpm: number) => {
     const audioContext = useRef<AudioContext | null>(null);
@@ -82,7 +82,8 @@ export const useRhythmEngine = (bpm: number) => {
 
     const startEngine = () => {
         if (!audioContext.current) {
-            audioContext.current = new (window.AudioContext || (window as any).webkitAudioContext)();
+            const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+            audioContext.current = new AudioContextClass();
             nextNoteTime.current = audioContext.current.currentTime;
         }
     };
